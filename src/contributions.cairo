@@ -1,5 +1,6 @@
 #[starknet::interface]
 pub trait IContribute<T>{
+    fn get_campaign_count(self: @T) -> u32;
     fn create_campaign(ref self: T, target: u256);
     fn contribute(ref self: T, campaign_id: u32, amount: u256);
     fn get_contributions(self: @T, campaign_id: u32) -> u256;
@@ -71,6 +72,10 @@ use starknet::storage::StoragePathEntry;
 
     #[abi(embed_v0)]
     impl ContributeImpl of IContribute<ContractState>{
+        fn get_campaign_count(self: @ContractState) -> u32 {
+            self.campaign_count.read()
+        }
+
         fn create_campaign(ref self: ContractState, target: u256){
             let creator = get_caller_address();
             let mut campaign_count = self.campaign_count.read();
