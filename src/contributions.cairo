@@ -9,13 +9,44 @@ pub trait IContribute<T>{
 
 #[starknet::contract]
 pub mod Contribute{
-    use starknet::storage::StoragePathEntry;
+use starknet::storage::StoragePathEntry;
     use super::IContribute;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use starknet::storage::Map;
     use starknet::{ContractAddress, get_caller_address, get_contract_address};
     use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
     use stark_playground::utils::{strk_to_fri, stark_address};
+
+    #[event]
+    #[derive(Drop, starknet::Event)]
+    pub enum Event{
+        CampaignCreated: campaignCreated,
+        UserContributed: userContributed,
+        UserRefunded: userRefunded,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct campaignCreated{
+        #[key]
+        pub creator: ContractAddress,
+        pub campaign_id: u32,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct userContributed{
+        #[key]
+        pub user: ContractAddress,
+        pub campaign_id: u32,
+        pub amount: u256,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct userRefunded{
+        #[key]
+        pub caller: ContractAddress,
+        pub campaign_id: u32,
+        pub amount: u256,
+    }
 
 
     #[storage]
@@ -52,6 +83,9 @@ pub mod Contribute{
             campaign.is_active.write(true);
 
             self.campaign_count.write(new_campaign_id);
+
+            let event: campaignCreated = campaignCreated { creator: creator, campaign_id: new_campaign_id };
+            self.emit(event);
         }
 
          fn contribute(ref self: ContractState, campaign_id: u32, amount: u256){
@@ -78,6 +112,13 @@ pub mod Contribute{
 
             let success = dispatch.transfer_from(contributor, contract, strk_amount);
             assert!(success, "unsuccessful transfer");
+
+            if updated_amount >= campaign.target_amount.read() {
+                campaign.is_active.write(false);
+            };
+
+            let event: userContributed = userContributed { user: contributor, campaign_id: campaign_id, amount: amount };
+            self.emit(event);
          }
 
          fn get_contributions(self: @ContractState, campaign_id: u32) -> u256 {
@@ -112,6 +153,9 @@ pub mod Contribute{
 
             let success = dispatch.transfer(user, strk_amount);
             assert!(success, "unsuccessful transfer");
+
+            let event: userRefunded = userRefunded { caller: user, campaign_id: campaign_id, amount:  user_balance};
+            self.emit(event);
          }
     }
 }
