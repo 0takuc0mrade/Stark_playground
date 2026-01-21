@@ -97,6 +97,7 @@ fn test_contribute_campaign_open(){
     dispatcher.contribute(campaign_id, amount);
     stop_cheat_caller_address(dispatcher.contract_address);
 
+    //I used get_contributions() here, safe to say it functions properly
     let campaign_contributions = dispatcher.get_contributions(campaign_id);
 
     assert!(campaign_contributions == amount, "No contributions made");
@@ -104,7 +105,7 @@ fn test_contribute_campaign_open(){
     let expected_event = userContributed { user: contributor, campaign_id , amount };
 
     spy.assert_emitted(@array![(
-           dispatcher.contract_address,
+        dispatcher.contract_address,
         Event::UserContributed(expected_event),
     )]);
 }
@@ -132,4 +133,70 @@ fn test_contribute_campaign_closed(){
     start_cheat_caller_address(dispatcher.contract_address, contributor);
     dispatcher.contribute(campaign_id, new_amount);
     stop_cheat_caller_address(dispatcher.contract_address);
+}
+
+#[test]
+fn test_get_specific_user_contribution(){
+    let (campaign_id, dispatcher) = create_campaign();
+    let amount: u256 = 3;
+    let contributor = user_address();
+
+    set_balance(contributor, strk_to_fri(10), Token::STRK);
+    let erc20: IERC20Dispatcher = IERC20Dispatcher { contract_address: stark_address() };
+
+    start_cheat_caller_address(erc20.contract_address, contributor);
+    erc20.approve(dispatcher.contract_address, strk_to_fri(5));
+    stop_cheat_caller_address(erc20.contract_address);
+
+    start_cheat_caller_address(dispatcher.contract_address, contributor);
+    dispatcher.contribute(campaign_id, amount);
+
+
+    let user_contributions = dispatcher.get_my_contributions(campaign_id);
+
+    stop_cheat_caller_address(dispatcher.contract_address);
+
+    assert!(user_contributions == amount, "Get contributions failed");
+}
+
+#[test]
+fn test_refunded_with_events(){
+    let (campaign_id, dispatcher) = create_campaign();
+    let amount: u256 = 3;
+    let contributor = user_address();
+    let mut spy = spy_events();
+
+    set_balance(contributor, strk_to_fri(10), Token::STRK);
+    let erc20: IERC20Dispatcher = IERC20Dispatcher { contract_address: stark_address() };
+
+    start_cheat_caller_address(erc20.contract_address, contributor);
+    erc20.approve(dispatcher.contract_address, strk_to_fri(5));
+    stop_cheat_caller_address(erc20.contract_address);
+
+    start_cheat_caller_address(dispatcher.contract_address, contributor);
+    dispatcher.contribute(campaign_id, amount);
+
+
+    let user_contributions = dispatcher.get_my_contributions(campaign_id);
+
+    stop_cheat_caller_address(dispatcher.contract_address);
+
+    assert!(user_contributions == amount, "Get contributions failed");
+
+    //let's refund now
+    start_cheat_caller_address(dispatcher.contract_address, contributor);
+    dispatcher.refund(campaign_id);
+
+    let new_user_contributions = dispatcher.get_my_contributions(campaign_id);
+
+    stop_cheat_caller_address(dispatcher.contract_address);
+
+    assert!(new_user_contributions == 0, "The refund mechanism failed");
+
+    let expected_events = userRefunded { caller: contributor, campaign_id , amount: user_contributions };
+
+    spy.assert_emitted(@array![(
+        dispatcher.contract_address,
+        Event::UserRefunded(expected_events),
+    )]);
 }
